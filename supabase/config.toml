@@ -1,0 +1,7 @@
+project_id = "mxdnddrnwsfbuqutaqzv"
+
+[functions.generate-pix]
+verify_jwt = false
+
+[functions.webhook-dispatcher]
+verify_jwt = false
