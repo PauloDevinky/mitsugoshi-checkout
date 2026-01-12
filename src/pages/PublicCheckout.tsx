@@ -18,6 +18,8 @@ import { CheckoutForm } from "@/components/checkout/CheckoutForm";
 import type { CheckoutConfig } from "@/pages/CheckoutBuilderPage";
 import { defaultConfig } from "@/pages/CheckoutBuilderPage";
 
+import { PaymentEngine } from "@/services/payment-engine";
+
 interface ShippingOption {
   name: string;
   price: number;
@@ -325,17 +327,7 @@ export default function PublicCheckout() {
     setProcessingPayment(true);
 
     try {
-      const { data: gatewaySettings, error: gatewayError } = await supabase
-        .from("gateway_settings")
-        .select("api_key")
-        .eq("is_active", true)
-        .limit(1)
-        .single();
-
-      if (gatewayError || !gatewaySettings?.api_key) {
-        throw new Error("Gateway de pagamento não configurado");
-      }
-
+      // 1. Criar registro da transação (pendente)
       const { data: transaction, error: txError } = await supabase
         .from("transactions")
         .insert({
@@ -352,53 +344,50 @@ export default function PublicCheckout() {
 
       if (txError) throw txError;
 
-      const { data: pixData, error: pixError } = await supabase.functions.invoke(
-        "generate-pix",
-        {
-          body: {
-            amount: Math.round(totals.total * 100),
-            description: product.name,
-            customer: {
-              name: formData.name,
-              document: formData.cpf.replace(/\D/g, ""),
-              email: formData.email,
-              phone: formData.whatsapp.replace(/\D/g, ""),
-            },
-            item: {
-              title: product.name,
-              price: Math.round(totals.total * 100),
-              quantity: 1,
-            },
-            utm: "",
-            apiKey: gatewaySettings.api_key,
+      // 2. Processar pagamento via Payment Engine (Duttyfy)
+      try {
+        const paymentResponse = await PaymentEngine.process({
+          amount: Math.round(totals.total * 100), // Enviar em centavos
+          description: product.name,
+          customer: {
+            name: formData.name,
+            document: formData.cpf.replace(/\D/g, ""),
+            email: formData.email,
+            phone: formData.whatsapp.replace(/\D/g, ""),
           },
+          item: {
+            title: product.name,
+            price: Math.round(totals.total * 100),
+            quantity: 1,
+          },
+          utm: "", // Pode ser capturado da URL se necessário
+        });
+
+        // 3. Sucesso
+        if (paymentResponse.pixCode) {
+          setPixCode(paymentResponse.pixCode);
+          setShowPixSuccess(true);
+          
+          // Opcional: Atualizar ID da transação externa se o gateway retornar
+          if (paymentResponse.transactionId) {
+             // Poderíamos salvar o ID externo aqui se tivéssemos uma coluna para isso
+          }
+        } else {
+           throw new Error("Código PIX não gerado pelo gateway.");
         }
-      );
 
-      if (pixError) {
+      } catch (paymentError: any) {
+        // 4. Falha no Gateway -> Rejeitar transação
+        console.error("Payment Engine Error:", paymentError);
+        
         await supabase
           .from("transactions")
           .update({ status: "rejected" })
           .eq("id", transaction.id);
-        throw pixError;
+          
+        throw paymentError; // Repassa o erro para o catch externo exibir o toast
       }
 
-      if (pixData?.pixCode) {
-        setPixCode(pixData.pixCode);
-        setShowPixSuccess(true);
-      } else if (pixData?.error) {
-        await supabase
-          .from("transactions")
-          .update({ status: "rejected" })
-          .eq("id", transaction.id);
-        throw new Error(pixData.error);
-      } else {
-        await supabase
-          .from("transactions")
-          .update({ status: "rejected" })
-          .eq("id", transaction.id);
-        throw new Error("Código PIX não gerado");
-      }
     } catch (error) {
       console.error("Payment error:", error);
       const errorMsg = error instanceof Error ? error.message : "Erro ao gerar PIX";
