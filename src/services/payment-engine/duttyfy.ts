@@ -19,6 +19,7 @@ export class DuttyfyAdapter implements PaymentGateway {
       let apiKey = gatewaySettings?.api_key;
       
       if (!apiKey && !gatewaySettings) {
+         console.warn("Duttyfy: Chave não encontrada pelo nome 'duttyfy'. Tentando fallback genérico...");
          const { data: fallbackSettings } = await supabase
         .from("gateway_settings")
         .select("api_key")
@@ -29,8 +30,11 @@ export class DuttyfyAdapter implements PaymentGateway {
       }
 
       if (!apiKey) {
-        throw new Error("Duttyfy: Chave de API não configurada no painel administrativo.");
+        console.error("Duttyfy Error: Nenhuma chave de API ativa encontrada no banco de dados.");
+        throw new Error("Configuração de pagamento incompleta (Chave API ausente).");
       }
+
+      console.log("Duttyfy: Chave encontrada. Iniciando transação...");
 
       // 2. Chamar a Edge Function existente
       // Nota: Mantemos a chamada via Edge Function para não expor a API Key no client-side
@@ -46,11 +50,14 @@ export class DuttyfyAdapter implements PaymentGateway {
       });
 
       if (error) {
-        console.error("Duttyfy Edge Function Error:", error);
-        throw new Error("Falha na comunicação com o servidor de pagamentos.");
+        console.error("Duttyfy Edge Function Invocation Error:", error);
+        throw new Error("Falha de conexão com o servidor de pagamentos.");
       }
 
+      console.log("Duttyfy: Resposta da Edge Function:", data);
+
       if (data?.error) {
+        console.error("Duttyfy API Error:", data.error);
         throw new Error(data.error);
       }
 
