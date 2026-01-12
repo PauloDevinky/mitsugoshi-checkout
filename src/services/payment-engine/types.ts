@@ -17,10 +17,12 @@ export interface PaymentRequest {
   customer: PaymentCustomer;
   item: PaymentItem;
   utm?: string;
+  productId: string; // Adicionado para vincular transação
 }
 
 export interface PaymentResponse {
-  transactionId: string;
+  transactionId: string; // ID do gateway
+  internalTransactionId?: string; // ID interno (Supabase)
   pixCode: string; // Copia e Cola
   qrCodeUrl?: string; // Opcional
   status: 'pending' | 'approved' | 'rejected' | 'failed';

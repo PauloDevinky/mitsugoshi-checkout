@@ -45,6 +45,7 @@ export class DuttyfyAdapter implements PaymentGateway {
           customer: request.customer,
           item: request.item,
           utm: request.utm || "",
+          productId: request.productId,
           apiKey: apiKey,
         },
       });
@@ -67,6 +68,7 @@ export class DuttyfyAdapter implements PaymentGateway {
 
       return {
         transactionId: data.transactionId,
+        internalTransactionId: data.internalTransactionId,
         pixCode: data.pixCode,
         status: "pending",
         rawResponse: data,

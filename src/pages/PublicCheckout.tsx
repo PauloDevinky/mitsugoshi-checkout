@@ -327,65 +327,36 @@ export default function PublicCheckout() {
     setProcessingPayment(true);
 
     try {
-      // 1. Criar registro da transação (pendente)
-      const { data: transaction, error: txError } = await supabase
-        .from("transactions")
-        .insert({
-          product_id: product.id,
-          amount: totals.total,
-          status: "pending",
-          payment_method: "pix",
-          customer_name: formData.name,
-          customer_email: formData.email,
-          customer_whatsapp: formData.whatsapp,
-        })
-        .select()
-        .single();
+      // 1. Processar pagamento via Payment Engine (Duttyfy)
+      // A Edge Function agora cria a transação no banco
+      const paymentResponse = await PaymentEngine.process({
+        amount: Math.round(totals.total * 100), // Enviar em centavos
+        description: product.name,
+        customer: {
+          name: formData.name,
+          document: formData.cpf.replace(/\D/g, ""),
+          email: formData.email,
+          phone: formData.whatsapp.replace(/\D/g, ""),
+        },
+        item: {
+          title: product.name,
+          price: Math.round(totals.total * 100),
+          quantity: 1,
+        },
+        utm: "", // Pode ser capturado da URL se necessário
+        productId: product.id,
+      });
 
-      if (txError) throw txError;
-
-      // 2. Processar pagamento via Payment Engine (Duttyfy)
-      try {
-        const paymentResponse = await PaymentEngine.process({
-          amount: Math.round(totals.total * 100), // Enviar em centavos
-          description: product.name,
-          customer: {
-            name: formData.name,
-            document: formData.cpf.replace(/\D/g, ""),
-            email: formData.email,
-            phone: formData.whatsapp.replace(/\D/g, ""),
-          },
-          item: {
-            title: product.name,
-            price: Math.round(totals.total * 100),
-            quantity: 1,
-          },
-          utm: "", // Pode ser capturado da URL se necessário
-        });
-
-        // 3. Sucesso
-        if (paymentResponse.pixCode) {
-          setPixCode(paymentResponse.pixCode);
-          setShowPixSuccess(true);
-          
-          // Opcional: Atualizar ID da transação externa se o gateway retornar
-          if (paymentResponse.transactionId) {
-             // Poderíamos salvar o ID externo aqui se tivéssemos uma coluna para isso
-          }
-        } else {
-           throw new Error("Código PIX não gerado pelo gateway.");
-        }
-
-      } catch (paymentError: any) {
-        // 4. Falha no Gateway -> Rejeitar transação
-        console.error("Payment Engine Error:", paymentError);
+      // 2. Sucesso
+      if (paymentResponse.pixCode) {
+        setPixCode(paymentResponse.pixCode);
+        setShowPixSuccess(true);
         
-        await supabase
-          .from("transactions")
-          .update({ status: "rejected" })
-          .eq("id", transaction.id);
-          
-        throw paymentError; // Repassa o erro para o catch externo exibir o toast
+        if (paymentResponse.internalTransactionId) {
+           console.log("Transação interna criada:", paymentResponse.internalTransactionId);
+        }
+      } else {
+         throw new Error("Código PIX não gerado pelo gateway.");
       }
 
     } catch (error) {
