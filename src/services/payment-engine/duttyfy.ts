@@ -55,7 +55,9 @@ export class DuttyfyAdapter implements PaymentGateway {
 
       if (error) {
         console.error("Duttyfy Edge Function Invocation Error:", error);
-        throw new Error("Falha de conexão com o servidor de pagamentos.");
+        // Tentar extrair mensagem detalhada se possível
+        const errorDetails = error instanceof Error ? error.message : JSON.stringify(error);
+        throw new Error(`Falha de conexão com o servidor de pagamentos: ${errorDetails}`);
       }
 
       console.log("Duttyfy: Resposta da Edge Function:", data);
