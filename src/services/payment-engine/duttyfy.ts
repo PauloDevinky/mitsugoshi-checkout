@@ -30,8 +30,11 @@ export class DuttyfyAdapter implements PaymentGateway {
       }
 
       if (!apiKey) {
-        console.error("Duttyfy Error: Nenhuma chave de API ativa encontrada no banco de dados.");
-        throw new Error("Configuração de pagamento incompleta (Chave API ausente).");
+        // Tentar diagnosticar o problema
+        const { count } = await supabase.from("gateway_settings").select("*", { count: 'exact', head: true });
+        console.error(`Duttyfy Error: Nenhuma chave ativa. Total de registros na tabela: ${count}`);
+        
+        throw new Error("Configuração de pagamento incompleta (Chave API ausente). Verifique o painel administrativo.");
       }
 
       console.log("Duttyfy: Chave encontrada. Iniciando transação...");
